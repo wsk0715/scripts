@@ -1,0 +1,14 @@
+[core]
+    editor = vim
+[safe]
+    directory = *
+[credential]
+    helper = /mnt/c/Program\\ Files/Git/mingw64/bin/git-credential-manager.exe
+[user]
+    name = wsk0715
+    email = leindey@gmail.com
+[alias]
+    ll = "!git log --graph --decorate --format=format:'%C(yellow)commit %H%C(reset) %C(auto)%d%n    %C(white)Author: %C(red)%an %C(reset)<%C(green)%ae%C(reset)> %C(cyan)%ai%C(reset)%n    Commit: %C(red)%cn %C(reset)<%C(green)%ce%C(reset)> %C(cyan)%ci%C(reset)%n%n    %C(bold white)%s%C(reset)%n%w(0,4,4)%b'"
+    lo = "!git log --graph --decorate --format=format:'%C(yellow)%h %C(dim white)%ad %C(reset) %C(bold white)%s%C(reset) %C(auto)%d' --date=format:'%Y-%m-%d %H:%M:%S'"
+    hist = "!git --no-pager log --reverse --decorate --format=format:'%C(dim white)%ad %C(reset) %C(bold white)%s%C(reset) %C(auto)%d' --date=format:'%Y-%m-%d %H:%M:%S'"
+    rf = "!git reflog --date=relative"
