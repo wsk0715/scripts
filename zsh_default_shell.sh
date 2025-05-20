@@ -1,0 +1,1 @@
+sudo usermod --shell "$(which zsh)" "$(whoami)"
