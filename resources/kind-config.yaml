@@ -1,0 +1,27 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+# Kind 로컬 레지스트리 설정
+containerdConfigPatches:
+- |-
+  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5001"]
+    endpoint = ["http://kind-registry:5000"]
+nodes:
+- role: control-plane
+  # Ingress Controller가 호스트(WSL2)를 통해 트래픽을 받을 수 있도록 설정
+  extraPortMappings:
+  - containerPort: 80  # HTTP
+    hostPort: 80
+    protocol: TCP
+  - containerPort: 443 # HTTPS
+    hostPort: 443
+    protocol: TCP
+  extraMounts:
+  - hostPath: /kind/data
+    containerPath: /kind/data
+  - hostPath: /usr/share/zoneinfo/Asia/Seoul
+    containerPath: /etc/localtime
+
+- role: worker
+  extraMounts:
+  - hostPath: /kind/data
+    containerPath: /kind/data
