@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # 스왑 파일 크기 설정 (GB 단위)
 SWAP_SIZE_GB=2
 SWAP_PATH="/swapfile"

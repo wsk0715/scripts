@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # 1. 기존 docker 관련 패키지 제거 (있을 경우)
 sudo apt remove -y docker docker-engine docker.io containerd runc
 
