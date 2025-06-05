@@ -3,7 +3,7 @@
 set -e
 
 # 1. 기존 docker 관련 패키지 제거 (있을 경우)
-sudo apt remove -y docker docker-engine docker.io containerd runc
+sudo apt remove -y docker docker-engine docker.io containerd runc || true
 
 # 2. 필수 패키지 설치
 sudo apt update
