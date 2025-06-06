@@ -8,6 +8,9 @@ sudo apt update
 echo "⬆️ Upgrading existing packages..."
 sudo apt upgrade -y
 
+sudo systemctl stop ufw || true
+sudo apt remove --purge -y ufw || true
+
 echo "🔧 Installing essential utilities..."
 sudo apt install -y \
   curl \
@@ -23,7 +26,6 @@ sudo apt install -y \
   ca-certificates \
   lsb-release \
   gnupg \
-  ufw \
   net-tools \
   iptables-persistent
 
