@@ -12,7 +12,7 @@ sudo apt install -y ca-certificates curl gnupg lsb-release
 # 3. Docker 공식 GPG 키 추가
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-  sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  sudo gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
 sudo chmod a+r /etc/apt/keyrings/docker.gpg
 
 # 4. Docker stable 저장소 등록
