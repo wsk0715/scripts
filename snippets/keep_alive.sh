@@ -8,7 +8,7 @@ SCHEDULER_DIR="/scheduler"
 SCRIPT_PATH="$SCHEDULER_DIR/keep_alive.sh"
 LOG_FILE="$SCHEDULER_DIR/keep_alive.log"
 
-mkdir -p "$SCHEDULER_DIR"
+sudo mkdir -p "$SCHEDULER_DIR"
 
 # 1. 실행 스크립트 작성
 cat > "$SCRIPT_PATH" <<EOF
