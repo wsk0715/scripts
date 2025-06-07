@@ -1,17 +1,6 @@
 #!/bin/bash
 
-# 파일에 라인 추가 또는 수정 함수
-set_or_append_line() {
-  local file="$1"
-  local pattern="$2"
-  local replacement="$3"
-
-  if grep -q "$pattern" "$file"; then
-    sed -i "s|$pattern.*|$replacement|" "$file"
-  else
-    echo "$replacement" >> "$file"
-  fi
-}
+source ./libs/replace_or_append_line.sh
 
 set -e
 
@@ -62,20 +51,14 @@ sudo apt install -y autojump
 
 # .zshrc 설정
 # oh-my-zsh
-set_or_append_line "$ZSHRC" '^export ZSH=' 'export ZSH="$HOME/.oh-my-zsh"'
-set_or_append_line "$ZSHRC" '^ZSH_THEME=' 'ZSH_THEME=""'
+replace_or_append_line "$ZSHRC" '^export ZSH=' 'export ZSH="$HOME/.oh-my-zsh"'
+replace_or_append_line "$ZSHRC" '^ZSH_THEME=' 'ZSH_THEME=""'
 echo "" >> "$ZSHRC"
 
 # 플러그인
-set_or_append_line "$ZSHRC" '^plugins=' 'plugins=(git sudo history z command-not-found zsh-autosuggestions zsh-syntax-highlighting)'
+replace_or_append_line "$ZSHRC" '^plugins=' 'plugins=(git sudo history z command-not-found zsh-autosuggestions zsh-syntax-highlighting)'
 echo "" >> "$ZSHRC"
 
-# alias
-set_or_append_line "$ZSHRC" "^alias ls=" "alias ls='ls --color=auto'"
-set_or_append_line "$ZSHRC" "^alias ll=" "alias ll='ls -alF'"
-set_or_append_line "$ZSHRC" "^alias la=" "alias la='ls -A'"
-set_or_append_line "$ZSHRC" "^alias l=" "alias l='ls -CF'"
-set_or_append_line "$ZSHRC" "^alias grep=" "alias grep='grep --color=auto'"
 echo "" >> "$ZSHRC"
 
 # Git 브랜치 정보
@@ -86,7 +69,7 @@ echo "zstyle ':vcs_info:git:*' formats '(%b)'" >> "$ZSHRC"
 echo "" >> "$ZSHRC"
 
 # 오타 자동 수정 옵션
-set_or_append_line "$ZSHRC" '^setopt correct' 'setopt correct'
+replace_or_append_line "$ZSHRC" '^setopt correct' 'setopt correct'
 echo "" >> "$ZSHRC"
 
 # 키 바인딩
@@ -96,10 +79,12 @@ echo "bindkey '^[[5~' up-line-or-history     # PageUp" >> "$ZSHRC"
 echo "bindkey '^[[6~' down-line-or-history   # PageDown" >> "$ZSHRC"
 echo "" >> "$ZSHRC"
 
-# autojump 설정
-echo "source /usr/share/autojump/autojump.sh" >> "$ZSHRC"
+# alias
+sudo cp ./resources/aliases.sh $HOME/.aliases.sh
 
-# powerlevel10k 설정
+# source 설정
+echo "source $HOME/.aliases.sh" >> "$ZSHRC"
+echo "source /usr/share/autojump/autojump.sh" >> "$ZSHRC"
 echo "source $THEME_DIR/powerlevel10k/powerlevel10k.zsh-theme" >> "$ZSHRC"
 
 # 컬러 터미널 설정(powerlevel10k)
