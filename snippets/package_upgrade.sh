@@ -24,6 +24,7 @@ sudo apt install -y \
   build-essential \
   software-properties-common \
   ca-certificates \
+  apt-transport-https \
   lsb-release \
   gnupg \
   net-tools \
