@@ -2,6 +2,11 @@
 
 set -e
 
+echo "🧹Cleanup package cache..."
+sudo rm -rf /var/lib/apt/lists/*
+sudo apt clean
+sudo apt autoclean
+
 echo "📦 Updating package list..."
 sudo apt update
 
