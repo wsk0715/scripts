@@ -10,13 +10,12 @@ sudo apt update
 sudo apt install -y \
   apt-transport-https \
   ca-certificates \
-  lsb-release \
   gnupg \
   curl
 
 
 echo "🔑 [2/5] GPG 키 등록"
-KEYRING_PATH="/usr/share/keyrings/kubernetes-archive-keyring.gpg"
+KEYRING_PATH="/etc/apt/keyrings/kubernetes-apt-keyring.gpg"
 # 기존 키 백업
 if [ -f "$KEYRING_PATH" ]; then
   BACKUP="$KEYRING_PATH.bak.$(date +%s)"
@@ -25,8 +24,7 @@ if [ -f "$KEYRING_PATH" ]; then
 fi
 
 # 새로운 키 등록
-sudo rm -f "$KEYRING_PATH"
-curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | \
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.33/deb/Release.key | \
   sudo gpg --dearmor -o "$KEYRING_PATH"
 
 
@@ -41,8 +39,10 @@ fi
 
 # 새로운 저장소 등록
 sudo rm -f "$SOURCE_LIST"
-echo "deb [signed-by=$KEYRING_PATH] https://apt.kubernetes.io kubernetes-xenial main" | \
+echo "deb [signed-by=$KEYRING_PATH] https://pkgs.k8s.io/core:/stable:/v1.33/deb/ /" | \
   sudo tee "$SOURCE_LIST" > /dev/null
+
+
 echo "🔄 [4/5] APT 패키지 목록 갱신"
 sudo apt update
 
