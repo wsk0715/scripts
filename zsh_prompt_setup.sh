@@ -1,8 +1,17 @@
 #!/bin/bash
 
-source ./libs/replace_or_append_line.sh
+# ------------------------------------------------------------
+# Zsh & oh-my-zsh 설치 스크립트
+# ------------------------------------------------------------
 
 set -e
+
+# 라이브러리 로드
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/libs/string_lib.sh"
+source "$SCRIPT_DIR/libs/file_lib.sh"
+
+# ------------------------------------------------------------
 
 echo "🌀 Zsh & oh-my-zsh 설치 중..."
 
@@ -17,48 +26,52 @@ ZSHRC="$USER_HOME/.zshrc"
 THEME_DIR="$USER_HOME/.oh-my-zsh/custom/themes"
 PLUGINS_DIR="$USER_HOME/.oh-my-zsh/custom/plugins"
 
-# 기존 .zshrc 백업
-if [ -f "$ZSHRC" ]; then
-  cp "$ZSHRC" "$HOME/.zshrc.backup.$(date +%Y%m%d)"
-fi
 
-# zsh 설치
+# 1. 기존 .zshrc 백업
+file_backup "$ZSHRC"
+
+
+# 2. zsh 설치
 sudo apt update
 sudo apt install -y zsh
 
-# 기본 쉘 zsh로 변경
-echo "🛠️ 기본 쉘을 zsh로 설정: $EXEC_USER"
+
+# 3. 기본 쉘 zsh로 변경
 sudo usermod --shell "$(which zsh)" "$EXEC_USER"
 
-# oh-my-zsh 설치
+
+# 4. oh-my-zsh 설치
 echo "🌟 oh-my-zsh 설치..."
-sudo rm -rf "$USER_HOME/.oh-my-zsh"
+file_remove "$USER_HOME/.oh-my-zsh"
 export RUNZSH=no
 export CHSH=no
 export KEEP_ZSHRC=yes
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 
-# powerlevel10k 설치
+
+# 5. powerlevel10k 설치
 echo "⬇️ powerlevel10k 다운로드 중..."
-sudo rm -rf "$THEME_DIR/powerlevel10k"
+file_remove "$THEME_DIR/powerlevel10k"
 git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$THEME_DIR/powerlevel10k"
 
-# 플러그인 설치
+
+# 6. 플러그인 설치
+# zsh-autosuggestions
 git clone https://github.com/zsh-users/zsh-autosuggestions ${PLUGINS_DIR}/zsh-autosuggestions
+# zsh-syntax-highlighting
 git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${PLUGINS_DIR}/zsh-syntax-highlighting
+# autojump
 sudo apt install -y autojump
 
 
-# .zshrc 설정
+# 7. zshrc 설정
 # oh-my-zsh
-replace_or_append_line "$ZSHRC" '^export ZSH=' 'export ZSH="$HOME/.oh-my-zsh"'
-replace_or_append_line "$ZSHRC" '^ZSH_THEME=' 'ZSH_THEME=""'
+string_replace_or_append "$ZSHRC" '^export ZSH=' 'export ZSH="$HOME/.oh-my-zsh"'
+string_replace_or_append "$ZSHRC" '^ZSH_THEME=' 'ZSH_THEME=""'
 echo "" >> "$ZSHRC"
 
 # 플러그인
-replace_or_append_line "$ZSHRC" '^plugins=' 'plugins=(git sudo history z command-not-found zsh-autosuggestions zsh-syntax-highlighting)'
-echo "" >> "$ZSHRC"
-
+string_replace_or_append "$ZSHRC" '^plugins=' 'plugins=(git sudo history z command-not-found zsh-autosuggestions zsh-syntax-highlighting)'
 echo "" >> "$ZSHRC"
 
 # Git 브랜치 정보
@@ -69,7 +82,7 @@ echo "zstyle ':vcs_info:git:*' formats '(%b)'" >> "$ZSHRC"
 echo "" >> "$ZSHRC"
 
 # 오타 자동 수정 옵션
-replace_or_append_line "$ZSHRC" '^setopt correct' 'setopt correct'
+string_replace_or_append "$ZSHRC" '^setopt correct' 'setopt correct'
 echo "" >> "$ZSHRC"
 
 # 키 바인딩
@@ -92,7 +105,7 @@ echo "export TERM=xterm-256color" >> "$ZSHRC"
 echo "export COLORTERM=truecolor" >> "$ZSHRC"
 
 
-# 파일 소유권 재조정
+# 8. 파일 소유권 재조정
 sudo chown "$EXEC_USER":"$EXEC_USER" "$ZSHRC"
 
 echo "✅ zsh 및 oh-my-zsh 설정 완료!"

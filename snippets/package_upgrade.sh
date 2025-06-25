@@ -1,48 +1,46 @@
 #!/bin/bash
 
+# ------------------------------------------------------------
+# 패키지 업그레이드 스크립트
+# ------------------------------------------------------------
+
 set -e
 
-echo "🧹Cleanup package cache..."
-sudo rm -rf /var/lib/apt/lists/*
-sudo apt clean
-sudo apt autoclean
+# 라이브러리 로드
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../libs/apt_lib.sh"
 
-echo "📦 Updating package list..."
-sudo apt update
+# ------------------------------------------------------------
 
-echo "⬆️ Upgrading existing packages..."
-sudo apt upgrade -y
+echo "🎯 Ubuntu 패키지 업그레이드 시작..."
 
-sudo systemctl stop ufw || true
-sudo apt remove --purge -y ufw || true
+# 1. APT 캐시 정리
+apt_cleanup_cache
 
-echo "🔧 Installing essential utilities..."
-sudo apt install -y \
-  curl \
-  wget \
-  cron \
-  file \
-  unzip \
-  git \
-  vim \
-  bash-completion \
-  build-essential \
-  software-properties-common \
-  ca-certificates \
-  apt-transport-https \
-  lsb-release \
-  gnupg \
-  net-tools \
-  iptables-persistent
+# 2. 패키지 목록 업데이트 & 업그레이드
+apt_upgrade_packages
 
-echo "✅ utilities installed successfully!"
+# 3. 필수 유틸리티 설치
+echo "🔧 필수 유틸리티 패키지 설치 중..."
+apt_install_packages \
+    curl \
+    wget \
+    cron \
+    file \
+    unzip \
+    git \
+    vim \
+    bash-completion \
+    build-essential \
+    software-properties-common \
+    ca-certificates \
+    apt-transport-https \
+    lsb-release \
+    gnupg \
+    net-tools \
+    iptables-persistent
 
-echo "🕒 Enabling cron service..."
-sudo systemctl enable cron
-sudo systemctl start cron
+# 4. 패키지 정리
+apt_cleanup
 
-echo "🧹 Cleaning up..."
-sudo apt autoremove -y
-sudo apt clean
-
-echo "🎉 All set! Ubuntu base setup complete."
+echo "🎉 Ubuntu 패키지 업그레이드 완료!"
