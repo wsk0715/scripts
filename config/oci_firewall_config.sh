@@ -112,8 +112,9 @@ firewall_on() {
   ipt -A INPUT -p tcp --dport 22 -j ACCEPT
   ipt -A INPUT -p tcp --dport 80 -j ACCEPT
   ipt -A INPUT -p tcp --dport 443 -j ACCEPT
+  ipt -A INPUT -p tcp --dport 6443 -j ACCEPT
   ipt -A INPUT -p icmp --icmp-type echo-request -j ACCEPT
-  ok "INPUT: loopback, established, SSH(22), HTTP(80), HTTPS(443), ICMP 허용"
+  ok "INPUT: loopback, established, SSH(22), HTTP(80), HTTPS(443), K3s-API(6443), ICMP 허용"
 
   # 3. DOCKER-USER: DNS 응답을 위한 RELATED,ESTABLISHED
   ipt -F DOCKER-USER 2>/dev/null || true
