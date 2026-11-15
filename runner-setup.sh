@@ -252,13 +252,66 @@ apply_linger() {
     echo "  -> linger $RUNNER_USER 켜짐"
 }
 
+user_instance_active() {
+    systemctl is-active --quiet "user@$(id -u "$RUNNER_USER").service"
+}
+
+runtime_dir_ready() {
+    [ -d "/run/user/$(id -u "$RUNNER_USER")" ]
+}
+
+# linger를 켠 직후에는 ci의 systemd 사용자 인스턴스가 아직 뜨지 않았을 수 있다.
+# 인스턴스가 없으면 setuptool이 유닛을 설치하지 않고 끝나므로 먼저 보장한다.
+ensure_user_systemd_instance() {
+    local uid instance waited=0
+    uid=$(id -u "$RUNNER_USER")
+    instance="user@$uid.service"
+
+    if user_instance_active; then
+        echo "  -> $instance 이미 active (변경 없음)"
+    else
+        echo "  -> $instance 시작"
+        if ! systemctl start "$instance"; then
+            echo "[실패] $instance 를 시작하지 못했습니다." >&2
+            return 1
+        fi
+        echo "  -> $instance 시작됨"
+    fi
+
+    while ! runtime_dir_ready && [ "$waited" -lt 20 ]; do
+        sleep 0.5
+        waited=$((waited + 1))
+    done
+
+    if ! runtime_dir_ready; then
+        echo "[실패] $instance 는 active지만 /run/user/$uid 디렉터리가 10초 안에 생기지 않았습니다." >&2
+        return 1
+    fi
+    echo "  -> /run/user/$uid 준비됨"
+}
+
+rootless_docker_active() {
+    user_systemctl is-active --quiet docker.service
+}
+
 apply_rootless_docker() {
     runuser -u "$RUNNER_USER" -- env \
         XDG_RUNTIME_DIR="/run/user/$(id -u "$RUNNER_USER")" \
         HOME="$RUNNER_HOME" \
         PATH=/usr/bin:/bin:/usr/sbin:/sbin \
         dockerd-rootless-setuptool.sh install || return 1
-    echo "  -> rootless docker 설치 완료"
+
+    if ! rootless_docker_active; then
+        echo "  -> rootless docker 데몬이 inactive, docker.service 시작 시도"
+        user_systemctl start docker.service || true
+    fi
+
+    if ! rootless_docker_active; then
+        echo "[실패] rootless docker 데몬(docker.service)이 active가 아닙니다." >&2
+        echo "       setuptool이 유닛을 설치하지 못했을 수 있습니다." >&2
+        return 1
+    fi
+    echo "  -> rootless docker 설치 완료 (docker.service active)"
 }
 
 print_runner_registration() {
@@ -285,41 +338,48 @@ run_apply() {
     echo "    2. 계정 $RUNNER_USER 생성 (없을 때만)"
     echo "    3. /etc/subuid, /etc/subgid 의 $RUNNER_USER 범위 추가 (없을 때만)"
     echo "    4. linger $RUNNER_USER 켜기"
-    echo "    5. $RUNNER_USER 사용자의 rootless docker 설치"
-    echo "    6. 러너 등록 명령 출력 (등록은 하지 않음)"
+    echo "    5. $RUNNER_USER 의 systemd 사용자 인스턴스 기동 확인"
+    echo "    6. $RUNNER_USER 사용자의 rootless docker 설치 및 데몬 기동 확인"
+    echo "    7. 러너 등록 명령 출력 (등록은 하지 않음)"
     echo ""
 
-    echo "[1/6] 패키지 설치..."
+    echo "[1/7] 패키지 설치..."
     apply_step "패키지 설치" \
         "apt-get install -y --no-install-recommends ${REQUIRED_PACKAGES[*]} 를 직접 실행해 원인을 확인한 뒤 다시 실행하세요." \
         apply_packages
     echo ""
 
-    echo "[2/6] 계정 준비..."
+    echo "[2/7] 계정 준비..."
     apply_step "계정 생성" \
         "useradd --create-home --shell /bin/bash $RUNNER_USER 를 직접 실행해 원인을 확인한 뒤 다시 실행하세요." \
         apply_user
     echo ""
 
-    echo "[3/6] subuid/subgid 설정..."
+    echo "[3/7] subuid/subgid 설정..."
     apply_step "subuid/subgid 설정" \
         "usermod --add-subuids 100000-165535 $RUNNER_USER 와 usermod --add-subgids 100000-165535 $RUNNER_USER 를 직접 실행해 원인을 확인한 뒤 다시 실행하세요." \
         apply_subids
     echo ""
 
-    echo "[4/6] linger 설정..."
+    echo "[4/7] linger 설정..."
     apply_step "linger 설정" \
         "loginctl enable-linger $RUNNER_USER 를 직접 실행해 원인을 확인한 뒤 다시 실행하세요." \
         apply_linger
     echo ""
 
-    echo "[5/6] rootless docker 설치..."
+    echo "[5/7] 사용자 systemd 인스턴스 확인..."
+    apply_step "사용자 systemd 인스턴스 기동" \
+        "systemctl status user@$(id -u "$RUNNER_USER").service 와 journalctl -u user@$(id -u "$RUNNER_USER").service 로 원인을 확인하고, /run/user/$(id -u "$RUNNER_USER") 가 생기는지 확인한 뒤 다시 실행하세요." \
+        ensure_user_systemd_instance
+    echo ""
+
+    echo "[6/7] rootless docker 설치..."
     apply_step "rootless docker 설치" \
-        "$RUNNER_USER 사용자로 로그인해 XDG_RUNTIME_DIR=/run/user/$(id -u "$RUNNER_USER") dockerd-rootless-setuptool.sh install 을 직접 실행하세요." \
+        "$RUNNER_USER 사용자로 로그인해 systemctl --user status docker.service 와 journalctl --user -u docker.service 로 원인을 확인하고, XDG_RUNTIME_DIR=/run/user/$(id -u "$RUNNER_USER") dockerd-rootless-setuptool.sh install 을 직접 실행한 뒤 다시 실행하세요." \
         apply_rootless_docker
     echo ""
 
-    echo "[6/6] 러너 등록 안내..."
+    echo "[7/7] 러너 등록 안내..."
     print_runner_registration
 }
 
