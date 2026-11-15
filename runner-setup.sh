@@ -349,19 +349,19 @@ run_apply() {
         apply_packages
     echo ""
 
-    echo "[2/6] 계정 준비..."
+    echo "[2/7] 계정 준비..."
     apply_step "계정 생성" \
         "useradd --create-home --shell /bin/bash $RUNNER_USER 를 직접 실행해 원인을 확인한 뒤 다시 실행하세요." \
         apply_user
     echo ""
 
-    echo "[3/6] subuid/subgid 설정..."
+    echo "[3/7] subuid/subgid 설정..."
     apply_step "subuid/subgid 설정" \
         "usermod --add-subuids 100000-165535 $RUNNER_USER 와 usermod --add-subgids 100000-165535 $RUNNER_USER 를 직접 실행해 원인을 확인한 뒤 다시 실행하세요." \
         apply_subids
     echo ""
 
-    echo "[4/6] linger 설정..."
+    echo "[4/7] linger 설정..."
     apply_step "linger 설정" \
         "loginctl enable-linger $RUNNER_USER 를 직접 실행해 원인을 확인한 뒤 다시 실행하세요." \
         apply_linger
