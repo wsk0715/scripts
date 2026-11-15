@@ -6,9 +6,9 @@
 # 러너를 옮기기 위한 설정 스크립트다.
 #
 # 사용법:
-#   ./runner-setup.sh --check     필요 패키지·계정·설정 점검 (읽기 전용, 기본 동작)
+#   ./runner-setup.sh --check       필요 패키지·계정·설정 점검 (읽기 전용)
 #   sudo ./runner-setup.sh --apply  빠진 패키지와 계정·rootless docker 설정 (root)
-#   ./runner-setup.sh --verify    설정 결과 확인 (읽기 전용)
+#   sudo ./runner-setup.sh --verify 설정 결과 확인 (읽기 전용, root 필요)
 #
 # 인자 없이 실행하면 이 사용법만 출력하고 종료 코드 2로 끝난다.
 # 러너 등록과 토큰 입력은 하지 않는다. --apply 끝에 등록 명령만 출력한다.
@@ -34,17 +34,13 @@ report_missing() {
     MISSING_FOUND=1
 }
 
-report_unknown() {
-    printf '%-8s %s\n' "unknown" "$1"
-}
-
 usage() {
     cat <<'EOF'
 사용법: runner-setup.sh [--check|--apply|--verify]
 
-  --check   필요 패키지, 계정, rootless docker 전제 조건을 읽기 전용으로 점검한다. (기본 동작)
+  --check   필요 패키지, 계정, rootless docker 전제 조건을 읽기 전용으로 점검한다.
   --apply   root로 실행한다. 빠진 패키지와 ci 계정, rootless docker를 멱등하게 설정한다.
-  --verify  설정 결과를 읽기 전용으로 확인한다.
+  --verify  root로 실행한다. 설정 결과와 러너 유닛을 읽기 전용으로 확인한다.
 
 인자 없이 실행하면 이 사용법을 출력하고 종료 코드 2로 끝난다.
 EOF
@@ -85,8 +81,8 @@ cgroup_v2() {
 }
 
 # ci 사용자의 systemd 사용자 인스턴스에 접근할 수 있는지 확인한다.
+# --verify는 root로만 실행하므로 root 여부는 여기서 다시 보지 않는다.
 user_session_reachable() {
-    [ "$(id -u)" -eq 0 ] || return 1
     user_exists || return 1
     [ -S "/run/user/$(id -u "$RUNNER_USER")/bus" ] || return 1
 }
@@ -98,11 +94,24 @@ user_systemctl() {
         systemctl --user "$@"
 }
 
-is_bus_error() {
-    case "$1" in
-        *"Failed to connect to bus"*|*"No such file or directory"*|*"Connection refused"*) return 0 ;;
-        *) return 1 ;;
-    esac
+# 계약: ci는 존재하고, sudo·docker 그룹에 속하지 않아야 한다.
+# --check와 --verify가 같은 사실을 반대로 판정하지 않도록 한 곳에 모은다.
+report_account_groups() {
+    local group
+    if ! user_exists; then
+        report_missing "계정 $RUNNER_USER 없음"
+        report_missing "$RUNNER_USER sudo 그룹 소속 없음 (계정 없음)"
+        report_missing "$RUNNER_USER docker 그룹 소속 없음 (계정 없음)"
+        return 0
+    fi
+    report_ok "계정 $RUNNER_USER"
+    for group in sudo docker; do
+        if user_in_group "$group"; then
+            report_missing "$RUNNER_USER $group 그룹 소속 없음"
+        else
+            report_ok "$RUNNER_USER $group 그룹 소속 없음"
+        fi
+    done
 }
 
 # ------------------------------------------------------------
@@ -127,7 +136,7 @@ run_check() {
         report_missing "newuidmap, newgidmap (uidmap)"
     fi
 
-    local package group
+    local package
     for package in "${CHECK_PACKAGES[@]}"; do
         if package_installed "$package"; then
             report_ok "패키지 $package"
@@ -136,20 +145,7 @@ run_check() {
         fi
     done
 
-    if user_exists; then
-        report_ok "계정 $RUNNER_USER"
-        for group in sudo docker; do
-            if user_in_group "$group"; then
-                report_ok "$RUNNER_USER $group 그룹"
-            else
-                report_missing "$RUNNER_USER $group 그룹"
-            fi
-        done
-    else
-        report_missing "계정 $RUNNER_USER"
-        report_missing "$RUNNER_USER sudo 그룹"
-        report_missing "$RUNNER_USER docker 그룹"
-    fi
+    report_account_groups
 
     if subid_has_user /etc/subuid; then
         report_ok "/etc/subuid $RUNNER_USER 항목"
@@ -178,11 +174,29 @@ run_check() {
 # ------------------------------------------------------------
 # --apply
 # ------------------------------------------------------------
+# root가 필요한 서브커맨드는 실행 전에 확인하고, 아니면 안내 후 1로 멈춘다.
 require_root() {
+    local command="$1"
+    local reason="$2"
     if [ "$(id -u)" -ne 0 ]; then
-        echo "root 권한이 필요합니다. sudo ./runner-setup.sh --apply 로 다시 실행하세요." >&2
+        echo "$reason" >&2
+        echo "sudo ./runner-setup.sh $command 로 다시 실행하세요." >&2
         exit 1
     fi
+}
+
+# --apply 단계를 실행하고, 실패하면 무엇이 실패했는지와 다음에 할 일을 알린 뒤 멈춘다.
+apply_step() {
+    local label="$1"
+    local next_action="$2"
+    shift 2
+    if "$@"; then
+        return 0
+    fi
+    echo "" >&2
+    echo "[실패] $label 단계가 실패해 설정을 멈췄습니다." >&2
+    echo "다음에 할 일: $next_action" >&2
+    exit 1
 }
 
 apply_packages() {
@@ -200,7 +214,7 @@ apply_packages() {
     fi
 
     echo "  -> 빠진 패키지 설치: ${REQUIRED_PACKAGES[*]}"
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${REQUIRED_PACKAGES[@]}"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${REQUIRED_PACKAGES[@]}" || return 1
     echo "  -> 패키지 설치 완료"
 }
 
@@ -208,7 +222,7 @@ apply_user() {
     if user_exists; then
         echo "  -> 계정 $RUNNER_USER 이미 존재 (변경 없음)"
     else
-        useradd --create-home --shell /bin/bash "$RUNNER_USER"
+        useradd --create-home --shell /bin/bash "$RUNNER_USER" || return 1
         echo "  -> 계정 $RUNNER_USER 생성"
     fi
 }
@@ -217,14 +231,14 @@ apply_subids() {
     if subid_has_user /etc/subuid; then
         echo "  -> /etc/subuid $RUNNER_USER 항목 있음 (변경 없음)"
     else
-        usermod --add-subuids 100000-165535 "$RUNNER_USER"
+        usermod --add-subuids 100000-165535 "$RUNNER_USER" || return 1
         echo "  -> /etc/subuid $RUNNER_USER 항목 추가"
     fi
 
     if subid_has_user /etc/subgid; then
         echo "  -> /etc/subgid $RUNNER_USER 항목 있음 (변경 없음)"
     else
-        usermod --add-subgids 100000-165535 "$RUNNER_USER"
+        usermod --add-subgids 100000-165535 "$RUNNER_USER" || return 1
         echo "  -> /etc/subgid $RUNNER_USER 항목 추가"
     fi
 }
@@ -234,22 +248,16 @@ apply_linger() {
         echo "  -> linger $RUNNER_USER 이미 켜짐 (변경 없음)"
         return 0
     fi
-    loginctl enable-linger "$RUNNER_USER"
+    loginctl enable-linger "$RUNNER_USER" || return 1
     echo "  -> linger $RUNNER_USER 켜짐"
 }
 
 apply_rootless_docker() {
-    if ! runuser -u "$RUNNER_USER" -- env \
+    runuser -u "$RUNNER_USER" -- env \
         XDG_RUNTIME_DIR="/run/user/$(id -u "$RUNNER_USER")" \
         HOME="$RUNNER_HOME" \
         PATH=/usr/bin:/bin:/usr/sbin:/sbin \
-        dockerd-rootless-setuptool.sh install; then
-        echo "" >&2
-        echo "rootless docker 설치에 실패했습니다." >&2
-        echo "$RUNNER_USER 사용자로 로그인해 다음 명령을 직접 실행하세요." >&2
-        echo "  XDG_RUNTIME_DIR=/run/user/$(id -u "$RUNNER_USER") dockerd-rootless-setuptool.sh install" >&2
-        exit 1
-    fi
+        dockerd-rootless-setuptool.sh install || return 1
     echo "  -> rootless docker 설치 완료"
 }
 
@@ -266,7 +274,7 @@ EOF
 }
 
 run_apply() {
-    require_root
+    require_root --apply "root 권한이 필요합니다."
 
     echo "============================================"
     echo "  GitHub Actions runner: apply"
@@ -282,23 +290,33 @@ run_apply() {
     echo ""
 
     echo "[1/6] 패키지 설치..."
-    apply_packages
+    apply_step "패키지 설치" \
+        "apt-get install -y --no-install-recommends ${REQUIRED_PACKAGES[*]} 를 직접 실행해 원인을 확인한 뒤 다시 실행하세요." \
+        apply_packages
     echo ""
 
     echo "[2/6] 계정 준비..."
-    apply_user
+    apply_step "계정 생성" \
+        "useradd --create-home --shell /bin/bash $RUNNER_USER 를 직접 실행해 원인을 확인한 뒤 다시 실행하세요." \
+        apply_user
     echo ""
 
     echo "[3/6] subuid/subgid 설정..."
-    apply_subids
+    apply_step "subuid/subgid 설정" \
+        "usermod --add-subuids 100000-165535 $RUNNER_USER 와 usermod --add-subgids 100000-165535 $RUNNER_USER 를 직접 실행해 원인을 확인한 뒤 다시 실행하세요." \
+        apply_subids
     echo ""
 
     echo "[4/6] linger 설정..."
-    apply_linger
+    apply_step "linger 설정" \
+        "loginctl enable-linger $RUNNER_USER 를 직접 실행해 원인을 확인한 뒤 다시 실행하세요." \
+        apply_linger
     echo ""
 
     echo "[5/6] rootless docker 설치..."
-    apply_rootless_docker
+    apply_step "rootless docker 설치" \
+        "$RUNNER_USER 사용자로 로그인해 XDG_RUNTIME_DIR=/run/user/$(id -u "$RUNNER_USER") dockerd-rootless-setuptool.sh install 을 직접 실행하세요." \
+        apply_rootless_docker
     echo ""
 
     echo "[6/6] 러너 등록 안내..."
@@ -308,18 +326,6 @@ run_apply() {
 # ------------------------------------------------------------
 # --verify
 # ------------------------------------------------------------
-verify_groups_removed() {
-    if ! user_exists; then
-        report_missing "계정 $RUNNER_USER 없음"
-        return 0
-    fi
-    if user_in_group sudo || user_in_group docker; then
-        report_missing "$RUNNER_USER 의 sudo·docker 그룹 소속 없음"
-    else
-        report_ok "$RUNNER_USER 의 sudo·docker 그룹 소속 없음"
-    fi
-}
-
 verify_linger() {
     if linger_enabled; then
         report_ok "linger $RUNNER_USER"
@@ -330,7 +336,7 @@ verify_linger() {
 
 verify_rootless_docker() {
     if ! user_session_reachable; then
-        report_unknown "rootless docker 유닛 active (사용자 세션에 접근할 수 없음)"
+        report_missing "rootless docker 유닛 active (사용자 세션에 접근할 수 없음)"
         return 0
     fi
 
@@ -340,16 +346,12 @@ verify_rootless_docker() {
         return 0
     fi
 
-    if is_bus_error "$output"; then
-        report_unknown "rootless docker 유닛 active (사용자 세션에 접근할 수 없음)"
-    else
-        report_missing "rootless docker 유닛 active ($output)"
-    fi
+    report_missing "rootless docker 유닛 active ($output)"
 }
 
 verify_runner_service() {
     if ! user_session_reachable; then
-        report_unknown "러너 서비스 active (사용자 세션에 접근할 수 없음)"
+        report_missing "러너 서비스 active (사용자 세션에 접근할 수 없음)"
         return 0
     fi
 
@@ -359,20 +361,18 @@ verify_runner_service() {
         return 0
     fi
 
-    if is_bus_error "$output"; then
-        report_unknown "러너 서비스 active (사용자 세션에 접근할 수 없음)"
-    else
-        report_missing "러너 서비스 active"
-    fi
+    report_missing "러너 서비스 active"
 }
 
 run_verify() {
+    require_root --verify "root로 실행해야 유닛을 확인할 수 있습니다."
+
     echo "============================================"
     echo "  GitHub Actions runner: verify"
     echo "============================================"
     echo ""
 
-    verify_groups_removed
+    report_account_groups
     verify_linger
     verify_rootless_docker
     verify_runner_service
@@ -391,7 +391,7 @@ if [ "$#" -eq 0 ]; then
     exit 2
 fi
 
-COMMAND="${1:---check}"
+COMMAND="$1"
 
 case "$COMMAND" in
     --check)
