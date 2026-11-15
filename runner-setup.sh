@@ -410,15 +410,26 @@ verify_rootless_docker() {
 }
 
 verify_runner_service() {
-    if ! user_session_reachable; then
-        report_missing "러너 서비스 active (사용자 세션에 접근할 수 없음)"
-        return 0
+    local output unit system_user
+
+    if user_session_reachable; then
+        if output=$(user_systemctl list-units --type=service --state=active --no-legend 'actions.runner.*' 2>&1) && [ -n "$output" ]; then
+            report_ok "러너 서비스 active"
+            return 0
+        fi
     fi
 
-    local output
-    if output=$(user_systemctl list-units --type=service --state=active --no-legend 'actions.runner.*' 2>&1) && [ -n "$output" ]; then
-        report_ok "러너 서비스 active"
-        return 0
+    # svc.sh를 root로 실행해 설치한 러너는 사용자 인스턴스가 아니라
+    # 시스템 유닛(/etc/systemd/system/actions.runner.*.service, 내부 User=ci)으로 등록된다.
+    if output=$(systemctl list-units --type=service --state=active --no-legend 'actions.runner.*' 2>/dev/null); then
+        while read -r unit _; do
+            [ -n "$unit" ] || continue
+            system_user=$(systemctl show -p User --value "$unit" 2>/dev/null || true)
+            if [ "$system_user" = "$RUNNER_USER" ]; then
+                report_ok "러너 서비스 active"
+                return 0
+            fi
+        done <<< "$output"
     fi
 
     report_missing "러너 서비스 active"
